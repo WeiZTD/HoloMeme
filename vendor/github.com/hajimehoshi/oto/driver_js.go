@@ -36,12 +36,9 @@ type driver struct {
 	callbacks       map[string]js.Func
 
 	// For Audio Worklet
-	workletNode     js.Value
-	workletNodePost js.Value
-	messageArray    js.Value
-	transferArray   js.Value
-	bufs            [][]js.Value
-	cond            *sync.Cond
+	workletNode js.Value
+	bufs        [][]js.Value
+	cond        *sync.Cond
 }
 
 type warn struct {
@@ -55,12 +52,16 @@ func (w *warn) Error() string {
 const audioBufferSamples = 3200
 
 func tryAudioWorklet(context js.Value, channelNum int) (js.Value, error) {
-	if !js.Global().Get("AudioWorkletNode").Truthy() {
+	if valueEqual(js.Global().Get("AudioWorkletNode"), js.Undefined()) {
+		return js.Undefined(), nil
+	}
+
+	if !isAudioWorkletAvailable() {
 		return js.Undefined(), nil
 	}
 
 	worklet := context.Get("audioWorklet")
-	if !worklet.Truthy() {
+	if valueEqual(worklet, js.Undefined()) {
 		return js.Undefined(), &warn{
 			msg: "AudioWorklet is not available due to the insecure context. See https://developer.mozilla.org/en-US/docs/Web/API/AudioWorklet",
 		}
@@ -79,8 +80,7 @@ class EbitenAudioWorkletProcessor extends AudioWorkletProcessor {
     this.port.onmessage = (e) => {
       const bufs = e.data;
       for (let ch = 0; ch < bufs.length; ch++) {
-        const buf = bufs[ch];
-        this.buffers_[ch].push(new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4));
+        this.buffers_[ch].push(bufs[ch]);
       }
     };
   }
@@ -107,7 +107,7 @@ class EbitenAudioWorkletProcessor extends AudioWorkletProcessor {
       this.consumed_.push([]);
       idx++;
     }
-    this.consumed_[idx][ch] = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+    this.consumed_[idx][ch] = buf;
   }
 
   process(inputs, outputs, parameters) {
@@ -167,15 +167,11 @@ registerProcessor('ebiten-audio-worklet-processor', EbitenAudioWorkletProcessor)
 }
 
 func newDriver(sampleRate, channelNum, bitDepthInBytes, bufferSize int) (tryWriteCloser, error) {
-	if js.Global().Get("go2cpp").Truthy() {
-		return newDriverGo2Cpp(sampleRate, channelNum, bitDepthInBytes, bufferSize)
-	}
-
 	class := js.Global().Get("AudioContext")
-	if !class.Truthy() {
+	if valueEqual(class, js.Undefined()) {
 		class = js.Global().Get("webkitAudioContext")
 	}
-	if !class.Truthy() {
+	if valueEqual(class, js.Undefined()) {
 		return nil, errors.New("oto: audio couldn't be initialized")
 	}
 
@@ -193,7 +189,7 @@ func newDriver(sampleRate, channelNum, bitDepthInBytes, bufferSize int) (tryWrit
 	}
 
 	bs := bufferSize
-	if !node.Truthy() {
+	if valueEqual(node, js.Undefined()) {
 		bs = max(bufferSize, audioBufferSamples*channelNum*bitDepthInBytes)
 	} else {
 		bs = max(bufferSize, 4096)
@@ -206,24 +202,19 @@ func newDriver(sampleRate, channelNum, bitDepthInBytes, bufferSize int) (tryWrit
 		context:         context,
 		workletNode:     node,
 		bufferSize:      bs,
+		cond:            sync.NewCond(&sync.Mutex{}),
 	}
 
-	if node.Truthy() {
-		port := node.Get("port")
-		p.workletNodePost = port.Get("postMessage").Call("bind", port)
-		p.messageArray = js.Global().Get("Array").New(2)
-		p.transferArray = js.Global().Get("Array").New(2)
-		p.cond = sync.NewCond(&sync.Mutex{})
-
-		s := p.bufferSize / p.channelNum / p.bitDepthInBytes * 4
+	if !valueEqual(node, js.Undefined()) {
+		s := p.bufferSize / p.channelNum / p.bitDepthInBytes / 2
 		p.bufs = [][]js.Value{
 			{
-				js.Global().Get("Uint8Array").New(s),
-				js.Global().Get("Uint8Array").New(s),
+				js.Global().Get("Float32Array").New(s),
+				js.Global().Get("Float32Array").New(s),
 			},
 			{
-				js.Global().Get("Uint8Array").New(s),
-				js.Global().Get("Uint8Array").New(s),
+				js.Global().Get("Float32Array").New(s),
+				js.Global().Get("Float32Array").New(s),
 			},
 		}
 
@@ -288,14 +279,14 @@ func (p *driver) TryWrite(data []byte) (int, error) {
 		return 0, nil
 	}
 
-	if p.workletNode.Truthy() {
+	if !valueEqual(p.workletNode, js.Undefined()) {
 		p.cond.L.Lock()
 		defer p.cond.L.Unlock()
 
 		n := min(len(data), max(0, p.bufferSize-len(p.tmp)))
 		p.tmp = append(p.tmp, data[:n]...)
 
-		if len(p.tmp) < p.bufferSize {
+		if len(p.tmp) < p.bufferSize/2 {
 			return n, nil
 		}
 
@@ -303,21 +294,19 @@ func (p *driver) TryWrite(data []byte) (int, error) {
 			p.cond.Wait()
 		}
 
-		l, r := toLR(p.tmp[:p.bufferSize])
+		l, r := toLR(p.tmp[:p.bufferSize/2])
 		tl := p.bufs[0][0]
 		tr := p.bufs[0][1]
 		copyFloat32sToJS(tl, l)
 		copyFloat32sToJS(tr, r)
-		p.tmp = p.tmp[p.bufferSize:]
+		p.tmp = p.tmp[p.bufferSize/2:]
 
-		bufs := p.messageArray
-		bufs.SetIndex(0, tl)
-		bufs.SetIndex(1, tr)
-		transfers := p.transferArray
-		transfers.SetIndex(0, tl.Get("buffer"))
-		transfers.SetIndex(1, tr.Get("buffer"))
+		bufs := js.Global().Get("Array").New()
+		bufs.Call("push", tl, tr)
+		transfers := js.Global().Get("Array").New()
+		transfers.Call("push", tl.Get("buffer"), tr.Get("buffer"))
 
-		p.workletNodePost.Invoke(bufs, transfers)
+		p.workletNode.Get("port").Call("postMessage", bufs, transfers)
 
 		p.bufs = p.bufs[1:]
 
@@ -348,7 +337,7 @@ func (p *driver) TryWrite(data []byte) (int, error) {
 	l, r := toLR(p.tmp[:le])
 	tl, freel := float32SliceToTypedArray(l)
 	tr, freer := float32SliceToTypedArray(r)
-	if buf.Get("copyToChannel").Truthy() {
+	if !valueEqual(buf.Get("copyToChannel"), js.Undefined()) {
 		buf.Call("copyToChannel", tl, 0, 0)
 		buf.Call("copyToChannel", tr, 1, 0)
 	} else {
@@ -378,8 +367,4 @@ func (p *driver) Close() error {
 	}
 	p.callbacks = nil
 	return nil
-}
-
-func (d *driver) tryWriteCanReturnWithoutWaiting() bool {
-	return true
 }
