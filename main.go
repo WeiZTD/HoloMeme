@@ -40,7 +40,7 @@ Space: Switch character`
 )
 
 var (
-	//go:embed resources/* html/index.html
+	//go:embed resources/* index.html
 	f embed.FS
 
 	normalFont font.Face
