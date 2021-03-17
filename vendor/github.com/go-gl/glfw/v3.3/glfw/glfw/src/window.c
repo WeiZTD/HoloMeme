@@ -1099,4 +1099,3 @@ GLFWAPI void glfwPostEmptyEvent(void)
     _GLFW_REQUIRE_INIT();
     _glfwPlatformPostEmptyEvent();
 }
-

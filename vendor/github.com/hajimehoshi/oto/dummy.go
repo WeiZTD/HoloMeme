@@ -51,7 +51,3 @@ func (d *dummyDriver) TryWrite(buf []byte) (int, error) {
 func (d *dummyDriver) Close() error {
 	return nil
 }
-
-func (d *dummyDriver) tryWriteCanReturnWithoutWaiting() bool {
-	return false
-}

@@ -318,10 +318,6 @@ func (d *driver) setError(err error) {
 	theDriver.err = err
 }
 
-func (d *driver) tryWriteCanReturnWithoutWaiting() bool {
-	return true
-}
-
 func setNotificationHandler(driver *driver) {
 	C.oto_setNotificationHandler()
 }

@@ -121,7 +121,6 @@ type tryWriteCloser interface {
 	io.Closer
 
 	TryWrite([]byte) (int, error)
-	tryWriteCanReturnWithoutWaiting() bool
 }
 
 type driverWriter struct {
@@ -147,13 +146,11 @@ func (d *driverWriter) Write(buf []byte) (int, error) {
 			return written, err
 		}
 		buf = buf[n:]
-		if d.driver.tryWriteCanReturnWithoutWaiting() {
-			// When not all buf is written, the underlying buffer is full.
-			// Mitigate the busy loop by sleeping (#10).
-			if len(buf) > 0 {
-				t := time.Second * time.Duration(d.bufferSize) / time.Duration(d.bytesPerSecond) / 8
-				time.Sleep(t)
-			}
+		// When not all buf is written, the underlying buffer is full.
+		// Mitigate the busy loop by sleeping (#10).
+		if len(buf) > 0 {
+			t := time.Second * time.Duration(d.bufferSize) / time.Duration(d.bytesPerSecond) / 8
+			time.Sleep(t)
 		}
 	}
 	return written, nil

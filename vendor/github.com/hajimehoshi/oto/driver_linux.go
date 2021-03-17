@@ -182,7 +182,3 @@ func (p *driver) Close() error {
 	}
 	return nil
 }
-
-func (d *driver) tryWriteCanReturnWithoutWaiting() bool {
-	return true
-}

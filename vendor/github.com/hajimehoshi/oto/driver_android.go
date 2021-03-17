@@ -384,7 +384,3 @@ func (p *driver) Close() error {
 	p.audioTrack = 0
 	return err
 }
-
-func (d *driver) tryWriteCanReturnWithoutWaiting() bool {
-	return true
-}

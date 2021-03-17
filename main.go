@@ -14,7 +14,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/audio"
-	"github.com/hajimehoshi/ebiten/v2/audio/vorbis"
+	"github.com/hajimehoshi/ebiten/v2/audio/mp3"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text"
@@ -86,7 +86,7 @@ func init() {
 		log.Fatal(err)
 	}
 
-	b, err = f.ReadFile("resources/music/shootingStars.ogg")
+	b, err = f.ReadFile("resources/music/shootingStars.mp3")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -156,12 +156,12 @@ func (g *Game) Update() error {
 		g.count++
 		return nil
 	}
-	oggS, err := vorbis.Decode(audioContext, bytes.NewReader(backgroundMusic))
+	mp3S, err := mp3.Decode(audioContext, bytes.NewReader(backgroundMusic))
 	if err != nil {
 		return err
 	}
 
-	s := audio.NewInfiniteLoop(oggS, 8*4*sampleRate)
+	s := audio.NewInfiniteLoop(mp3S, 32*sampleRate)
 
 	g.player, err = audio.NewPlayer(audioContext, s)
 	if err != nil {
@@ -205,7 +205,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	screen.DrawImage(subImage.(*ebiten.Image), op)
 	animScale -= 0.0033
 
-	text.Draw(screen, instructionsText, normalFont, 8, 75, color.White)
+	text.Draw(screen, instructionsText, normalFont, 15, 75, color.White)
 
 	if debugMode {
 		ebitenutil.DebugPrintAt(screen, cursorPosition, 0, 0)
