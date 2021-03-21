@@ -14,6 +14,11 @@ if (!WebAssembly.instantiateStreaming) {
 
 const go = new Go();
 WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject).then(result => {
+  document.getElementById("loading").remove()
   go.run(result.instance);
 });
 </script>
+
+<body style="font-family: 'Brush Script MT', cursive; text-align: left; background: #000000 ; color: #ffffff ; padding-top: 30px;padding-left: 15px;">
+  <div id="loading"><h1>Loading...</h1></div>
+</body>
