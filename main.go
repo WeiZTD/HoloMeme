@@ -8,6 +8,8 @@ import (
 	"image/color"
 	_ "image/png"
 	"log"
+	"math/rand"
+	"time"
 
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/opentype"
@@ -30,13 +32,22 @@ const (
 	screenWidth  = 1280
 	screenHeight = 720
 
-	instructionsfontDPI = 72
+	frameWidth  = 750
+	frameHeight = 720
 
-	instructionsText = `←: Kalm
+	animScale = 0.8
+
+	instructionsfontDPI = 80
+	instructionsText    = `←: Kalm
 →: Gotta Go Fast
 Space: Switch character`
 
 	sampleRate = 44100
+
+	speedUpAnimKey  = ebiten.KeyRight
+	slowDownAnimKey = ebiten.KeyLeft
+	changeCharaKey  = ebiten.KeySpace
+	debugKey        = ebiten.KeyF4
 )
 
 var (
@@ -46,26 +57,24 @@ var (
 	normalFont font.Face
 
 	debugMode      = false
-	debugKey       = ebiten.KeyF4
 	cursorPosition string
 
-	spriteX         = 1
-	spriteY         = 1
-	frameWidth      = 750
-	frameHeight     = 720
-	tickPerFrame    = 6
-	animScale       = 0.8
-	currentChar     *ebiten.Image
-	ameImage        *ebiten.Image
-	kfcImage        *ebiten.Image
-	backgroundImage *ebiten.Image
+	spriteX      = 1
+	spriteY      = 1
+	tickPerFrame = 6
 
-	audioContext    = audio.NewContext(sampleRate)
+	tempAnimScale = animScale
+	currentChar   *ebiten.Image
+	ameImage      *ebiten.Image
+	kfcImage      *ebiten.Image
+
+	backgroundImage       *ebiten.Image
+	backgroundFilter      *ebiten.Image
+	backgroundFilterColor color.Color = color.Black
+
+	audioContext = audio.NewContext(sampleRate)
+
 	backgroundMusic []byte
-
-	speedUpAnimKey  = ebiten.KeyRight
-	slowDownAnimKey = ebiten.KeyLeft
-	changeCharaKey  = ebiten.KeySpace
 )
 
 func init() {
@@ -121,7 +130,9 @@ func init() {
 		log.Fatal(err)
 	}
 	kfcImage = ebiten.NewImageFromImage(image.Image(kfcImageB))
+	backgroundFilter = ebiten.NewImage(screenWidth, screenHeight)
 	currentChar = ameImage
+
 }
 
 // Update proceeds the game state.
@@ -183,27 +194,33 @@ func getCursorPosition() string {
 // Draw is called every frame (typically 1/60[s] for 60Hz display).
 func (g *Game) Draw(screen *ebiten.Image) {
 	screen.DrawImage(backgroundImage, nil)
+	backgroundFilter.Fill(backgroundFilterColor)
+	screen.DrawImage(backgroundFilter, nil)
 
 	if g.count%int(tickPerFrame) == 0 {
-		g.count = 24
 		spriteX++
+		g.count = tickPerFrame
 	}
 	if spriteX > 6 {
 		spriteX = 1
 		spriteY++
+		r := uint8(rand.Intn(130) + 1)
+		g := uint8(rand.Intn(130) + 1)
+		b := uint8(rand.Intn(130) + 1)
+		backgroundFilterColor = color.Color(color.RGBA{r, g, b, 140})
 	}
 	if spriteY > 4 {
 		spriteY = 1
-		animScale = 0.8
+		tempAnimScale = animScale
 	}
 	sx, sy := spriteX*frameWidth, spriteY*frameHeight
 	subImage := currentChar.SubImage(image.Rect(sx-frameWidth, sy-frameHeight, sx, sy))
 	op := &ebiten.DrawImageOptions{}
 	x, y := ebiten.CursorPosition()
-	op.GeoM.Scale(animScale, animScale)
-	op.GeoM.Translate(float64(x-frameWidth*int(animScale)), float64(y-frameHeight*int(animScale)))
+	op.GeoM.Scale(tempAnimScale, tempAnimScale)
+	op.GeoM.Translate(float64(x-frameWidth*int(tempAnimScale)), float64(y-frameHeight*int(tempAnimScale)))
 	screen.DrawImage(subImage.(*ebiten.Image), op)
-	animScale -= 0.0033
+	tempAnimScale -= 0.0033
 
 	text.Draw(screen, instructionsText, normalFont, 15, 75, color.White)
 
@@ -212,6 +229,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("FPS：%.2f", ebiten.CurrentFPS()), 0, 15)
 		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("TPS：%.2f", ebiten.CurrentTPS()), 0, 30)
 	}
+
 }
 
 // Layout accepts a native outside size in device-independent pixels and returns the game's logical
@@ -227,9 +245,11 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 }
 
 func main() {
+	rand.Seed(time.Now().UnixNano())
 	ebiten.SetCursorMode(ebiten.CursorModeHidden)
+	ebiten.SetRunnableOnUnfocused(true)
 	ebiten.SetWindowSize(screenWidth, screenHeight)
-	ebiten.SetWindowTitle(`word.exe`)
+	ebiten.SetWindowTitle(`space.exe`)
 	if err := ebiten.RunGame(&Game{}); err != nil {
 		log.Fatal(err)
 	}
